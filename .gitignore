@@ -1,0 +1,4 @@
+.vscode/
+.zig-cache/
+gen-c_glib/
+mtcars.parquet

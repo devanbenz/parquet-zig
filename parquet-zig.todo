@@ -1,0 +1,5 @@
+parquet-zig to do list:
+- Create ParquetReader struct for building a parquet Reader
+- Get schema and metadata information from parquet file(s) on disk
+- Support reading and writing json data from parquet 
+- Support zstd compression for parquet 
