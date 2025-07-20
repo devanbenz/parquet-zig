@@ -7,6 +7,7 @@ const c = @cImport({
 
 const ArrayList = std.ArrayList;
 const PAR1: []const u8 = "PAR1";
+const BYTE: i8 = 4;
 
 pub const ParquetReaderError = error{NotParquet};
 
@@ -25,12 +26,28 @@ pub const ParquetReader = struct {
         try file.seekTo(0);
 
         const reader = file.reader();
-        const sz = try reader.readAtLeast(buf[0..], buf.len);
+        var sz = try reader.readAtLeast(buf[0..], buf.len);
         try std.testing.expect(sz == buf.len);
 
         if (!std.mem.eql(u8, &buf, PAR1)) {
             return error.NotParquet;
         }
+
+        // Get magic at bottom of file
+        try file.seekFromEnd(-BYTE);
+        sz = try reader.readAtLeast(buf[0..], buf.len);
+        try std.testing.expect(sz == buf.len);
+
+        if (!std.mem.eql(u8, &buf, PAR1)) {
+            return error.NotParquet;
+        }
+
+        try file.seekFromEnd(-BYTE * 2);
+        sz = try reader.readAtLeast(buf[0..], buf.len);
+        try std.testing.expect(sz == buf.len);
+        const metadata: c.FileMetadata = undefined;
+
+        @memcpy(metadata, std.mem.readInt(u32, &buf, .little));
 
         return ParquetReader{
             ._metadata = undefined,

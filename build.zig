@@ -22,6 +22,21 @@ pub fn build(b: *std.Build) void {
     // target and optimize options) will be listed when running `zig build --help`
     // in this directory.
 
+    // Create thrift generation step
+    const thrift_cmd = b.addSystemCommand(&.{
+        "thrift",
+        "--gen",
+        "c_glib",
+        "-o",
+        ".",
+        "parquet_schema.thrift",
+    });
+    thrift_cmd.setCwd(b.path("."));
+
+    // Create a step for running thrift
+    const thrift_step = b.step("thrift", "Generate C code from thrift file");
+    thrift_step.dependOn(&thrift_cmd.step);
+
     // This creates a module, which represents a collection of source files alongside
     // some compilation options, such as optimization mode and linked system libraries.
     // Zig modules are the preferred way of making Zig code available to consumers.
@@ -44,9 +59,19 @@ pub fn build(b: *std.Build) void {
 
     // Add include paths for C headers to the module for @cImport
     mod.addIncludePath(b.path("gen-c_glib"));
-    mod.addIncludePath(.{ .cwd_relative = "/usr/local/include" });
-    mod.addIncludePath(.{ .cwd_relative = "/usr/include/glib-2.0" });
-    mod.addIncludePath(.{ .cwd_relative = "/usr/lib/x86_64-linux-gnu/glib-2.0/include" });
+    
+    // Platform-specific include paths
+    if (target.result.os.tag == .macos) {
+        mod.addIncludePath(.{ .cwd_relative = "/usr/local/include" });
+        mod.addIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
+        mod.addIncludePath(.{ .cwd_relative = "/opt/homebrew/include/glib-2.0" });
+        mod.addIncludePath(.{ .cwd_relative = "/opt/homebrew/lib/glib-2.0/include" });
+        mod.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/gettext/include" });
+    } else {
+        mod.addIncludePath(.{ .cwd_relative = "/usr/local/include" });
+        mod.addIncludePath(.{ .cwd_relative = "/usr/include/glib-2.0" });
+        mod.addIncludePath(.{ .cwd_relative = "/usr/lib/x86_64-linux-gnu/glib-2.0/include" });
+    }
 
     // Here we define an executable. An executable needs to have a root module
     // which needs to expose a `main` function. While we could add a main function
@@ -91,6 +116,13 @@ pub fn build(b: *std.Build) void {
     });
 
     exe.linkLibC();
+    
+    // Add library search paths for macOS
+    if (target.result.os.tag == .macos) {
+        exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
+        exe.addLibraryPath(.{ .cwd_relative = "/usr/local/lib" });
+    }
+    
     exe.linkSystemLibrary("thrift");
     exe.linkSystemLibrary("thrift_c_glib");
     exe.linkSystemLibrary("glib-2.0");
@@ -98,18 +130,39 @@ pub fn build(b: *std.Build) void {
     
     // Add include paths for C headers
     exe.addIncludePath(b.path("gen-c_glib"));
-    exe.addIncludePath(.{ .cwd_relative = "/usr/local/include" });
-    exe.addIncludePath(.{ .cwd_relative = "/usr/include/glib-2.0" });
-    exe.addIncludePath(.{ .cwd_relative = "/usr/lib/x86_64-linux-gnu/glib-2.0/include" });
     
-    // Add C source files
+    // Platform-specific include paths
+    if (target.result.os.tag == .macos) {
+        exe.addIncludePath(.{ .cwd_relative = "/usr/local/include" });
+        exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
+        exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/include/glib-2.0" });
+        exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/lib/glib-2.0/include" });
+        exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/gettext/include" });
+    } else {
+        exe.addIncludePath(.{ .cwd_relative = "/usr/local/include" });
+        exe.addIncludePath(.{ .cwd_relative = "/usr/include/glib-2.0" });
+        exe.addIncludePath(.{ .cwd_relative = "/usr/lib/x86_64-linux-gnu/glib-2.0/include" });
+    }
+    
+    // Add C source files with platform-specific flags
+    const c_flags: []const []const u8 = if (target.result.os.tag == .macos) &.{
+        "-I/usr/local/include",
+        "-I/opt/homebrew/include",
+        "-I/opt/homebrew/include/glib-2.0",
+        "-I/opt/homebrew/lib/glib-2.0/include",
+        "-I/opt/homebrew/opt/gettext/include",
+    } else &.{
+        "-I/usr/local/include",
+        "-I/usr/include/glib-2.0",
+        "-I/usr/lib/x86_64-linux-gnu/glib-2.0/include",
+    };
+    
+    // Make sure thrift files are generated before building
+    exe.step.dependOn(&thrift_cmd.step);
+    
     exe.addCSourceFile(.{
         .file = b.path("gen-c_glib/parquet_schema_types.c"),
-        .flags = &.{
-            "-I/usr/local/include",
-            "-I/usr/include/glib-2.0",
-            "-I/usr/lib/x86_64-linux-gnu/glib-2.0/include",
-        },
+        .flags = c_flags,
     });
 
     // This declares intent for the executable to be installed into the
